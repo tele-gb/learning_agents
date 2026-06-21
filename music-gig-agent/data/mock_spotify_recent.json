@@ -1,0 +1,74 @@
+{
+  "recent_plays": [
+    {
+      "artist": "Yard Act",
+      "track": "The Overload",
+      "genres": ["post-punk", "indie"],
+      "moods": ["wry", "driving"],
+      "energy": 0.78
+    },
+    {
+      "artist": "Fontaines D.C.",
+      "track": "Jackie Down The Line",
+      "genres": ["post-punk", "indie"],
+      "moods": ["brooding", "driving"],
+      "energy": 0.74
+    },
+    {
+      "artist": "Little Simz",
+      "track": "Introvert",
+      "genres": ["hip-hop", "soul"],
+      "moods": ["cinematic", "sharp"],
+      "energy": 0.72
+    },
+    {
+      "artist": "SAULT",
+      "track": "Wildfires",
+      "genres": ["soul", "r&b"],
+      "moods": ["warm", "political"],
+      "energy": 0.62
+    },
+    {
+      "artist": "Ezra Collective",
+      "track": "Victory Dance",
+      "genres": ["jazz", "afrobeat"],
+      "moods": ["joyful", "groove-led"],
+      "energy": 0.82
+    },
+    {
+      "artist": "Kokoroko",
+      "track": "Abusey Junction",
+      "genres": ["jazz", "afrobeat"],
+      "moods": ["warm", "groove-led"],
+      "energy": 0.58
+    },
+    {
+      "artist": "Overmono",
+      "track": "Good Lies",
+      "genres": ["electronic", "dance"],
+      "moods": ["melancholic", "propulsive"],
+      "energy": 0.8
+    },
+    {
+      "artist": "Caribou",
+      "track": "Can't Do Without You",
+      "genres": ["electronic", "indie"],
+      "moods": ["euphoric", "warm"],
+      "energy": 0.76
+    },
+    {
+      "artist": "Self Esteem",
+      "track": "I Do This All The Time",
+      "genres": ["art-pop", "indie"],
+      "moods": ["confessional", "bold"],
+      "energy": 0.66
+    },
+    {
+      "artist": "Jungle",
+      "track": "Busy Earnin'",
+      "genres": ["funk", "soul"],
+      "moods": ["groove-led", "bright"],
+      "energy": 0.84
+    }
+  ]
+}

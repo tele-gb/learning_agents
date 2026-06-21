@@ -1,0 +1,81 @@
+{
+  "gigs": [
+    {
+      "artist": "The Murder Capital",
+      "venue": "O2 Institute Birmingham",
+      "date": "2026-07-04",
+      "genres": ["post-punk", "indie"],
+      "moods": ["brooding", "driving"],
+      "energy": 0.82,
+      "intensity": "high",
+      "starter_song": "More Is Less",
+      "local_pick": false
+    },
+    {
+      "artist": "Nubiyan Twist",
+      "venue": "Hare & Hounds",
+      "date": "2026-07-09",
+      "genres": ["jazz", "afrobeat", "soul"],
+      "moods": ["warm", "groove-led"],
+      "energy": 0.75,
+      "intensity": "medium",
+      "starter_song": "Figure Numatic",
+      "local_pick": true
+    },
+    {
+      "artist": "Kelly Lee Owens",
+      "venue": "XOYO Birmingham",
+      "date": "2026-07-13",
+      "genres": ["electronic", "dance"],
+      "moods": ["propulsive", "melancholic"],
+      "energy": 0.86,
+      "intensity": "high",
+      "starter_song": "Melt!",
+      "local_pick": false
+    },
+    {
+      "artist": "Jalen Ngonda",
+      "venue": "Town Hall Birmingham",
+      "date": "2026-07-18",
+      "genres": ["soul", "r&b"],
+      "moods": ["warm", "bright"],
+      "energy": 0.58,
+      "intensity": "low",
+      "starter_song": "Just Like You Used To",
+      "local_pick": false
+    },
+    {
+      "artist": "English Teacher",
+      "venue": "The Castle & Falcon",
+      "date": "2026-07-22",
+      "genres": ["indie", "post-punk", "art-pop"],
+      "moods": ["wry", "bold"],
+      "energy": 0.73,
+      "intensity": "medium",
+      "starter_song": "The World's Biggest Paving Slab",
+      "local_pick": true
+    },
+    {
+      "artist": "Steam Down",
+      "venue": "Mama Roux's",
+      "date": "2026-07-25",
+      "genres": ["jazz", "funk", "soul"],
+      "moods": ["joyful", "groove-led"],
+      "energy": 0.88,
+      "intensity": "high",
+      "starter_song": "Free My Skin",
+      "local_pick": true
+    },
+    {
+      "artist": "Porij",
+      "venue": "Sunflower Lounge",
+      "date": "2026-07-29",
+      "genres": ["electronic", "indie", "dance"],
+      "moods": ["euphoric", "propulsive"],
+      "energy": 0.81,
+      "intensity": "medium",
+      "starter_song": "Nobody Scared",
+      "local_pick": false
+    }
+  ]
+}

@@ -4,3 +4,9 @@ __pycache__/
 .pytest_cache/
 data/outputs/*.txt
 data/memory/*.json
+music-gig-agent/.spotify_token.json
+music-gig-agent/.spotify_auth_pending.json
+music-gig-agent/data/spotify_snapshots/*.json
+music-gig-agent/output/*.md
+!music-gig-agent/data/spotify_snapshots/.gitkeep
+!music-gig-agent/output/.gitkeep
