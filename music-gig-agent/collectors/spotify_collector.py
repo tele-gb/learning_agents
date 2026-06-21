@@ -16,10 +16,19 @@ from urllib.request import Request, urlopen
 SPOTIFY_AUTH_URL = "https://accounts.spotify.com/authorize"
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_API_BASE_URL = "https://api.spotify.com/v1"
-SPOTIFY_RECENTLY_PLAYED_SCOPE = "user-read-recently-played"
+SPOTIFY_SCOPES = [
+    "user-read-recently-played",
+    "user-top-read",
+    "user-library-read",
+    "user-follow-read",
+]
+SPOTIFY_AUTH_SCOPE = " ".join(SPOTIFY_SCOPES)
 DEFAULT_REDIRECT_URI = "http://127.0.0.1:8765/callback"
 DEFAULT_TOKEN_CACHE_PATH = Path(".spotify_token.json")
 DEFAULT_PENDING_AUTH_PATH = Path(".spotify_auth_pending.json")
+DEFAULT_TOP_LIMIT = 50
+DEFAULT_SAVED_TRACK_LIMIT = 50
+DEFAULT_FOLLOWED_ARTIST_LIMIT = 50
 
 
 @dataclass(frozen=True)
@@ -29,6 +38,9 @@ class SpotifyConfig:
     token_cache_path: Path = DEFAULT_TOKEN_CACHE_PATH
     pending_auth_path: Path = DEFAULT_PENDING_AUTH_PATH
     limit: int = 50
+    top_limit: int = DEFAULT_TOP_LIMIT
+    saved_track_limit: int = DEFAULT_SAVED_TRACK_LIMIT
+    followed_artist_limit: int = DEFAULT_FOLLOWED_ARTIST_LIMIT
     open_browser: bool = True
 
 
@@ -53,10 +65,38 @@ def load_recent_plays(path: Path) -> list[dict[str, Any]]:
 
 def load_recent_plays_from_spotify(config: SpotifyConfig) -> list[dict[str, Any]]:
     """Load recent plays from Spotify and normalize them for the pipeline."""
+    return load_spotify_taste_context(config)["recent_plays"]
+
+
+def load_spotify_taste_context(config: SpotifyConfig) -> dict[str, Any]:
+    """Load the broader Spotify signals used for taste analysis."""
     token = get_access_token(config)
+    recent_plays = fetch_recent_plays(config, token)
+    top_artists = fetch_top_artists(config, token)
+    top_tracks = fetch_top_tracks(config, token)
+    saved_tracks = fetch_saved_tracks(config, token)
+    followed_artists = fetch_followed_artists(config, token)
+
+    return {
+        "source": "spotify",
+        "recent_plays": recent_plays,
+        "top_artists": top_artists,
+        "top_tracks": top_tracks,
+        "saved_tracks": saved_tracks,
+        "followed_artists": followed_artists,
+        "limits": {
+            "recent_plays": config.limit,
+            "top_items": config.top_limit,
+            "saved_tracks": config.saved_track_limit,
+            "followed_artists": config.followed_artist_limit,
+        },
+    }
+
+
+def fetch_recent_plays(config: SpotifyConfig, access_token: str) -> list[dict[str, Any]]:
     payload = _spotify_get(
         "/me/player/recently-played",
-        token,
+        access_token,
         query_params={"limit": str(config.limit)},
     )
 
@@ -65,7 +105,101 @@ def load_recent_plays_from_spotify(config: SpotifyConfig) -> list[dict[str, Any]
         raise SpotifyApiError("Spotify response did not include an 'items' list")
 
     recent_plays = [_normalize_play_history_item(item) for item in items]
-    return enrich_plays_with_artist_metadata(recent_plays, token)
+    return enrich_plays_with_artist_metadata(recent_plays, access_token)
+
+
+def fetch_top_artists(config: SpotifyConfig, access_token: str) -> dict[str, list[dict[str, Any]]]:
+    """Fetch user's top artists across Spotify's supported time ranges."""
+    top_artists: dict[str, list[dict[str, Any]]] = {}
+    for time_range in ["short_term", "medium_term", "long_term"]:
+        payload = _spotify_get(
+            "/me/top/artists",
+            access_token,
+            query_params={"time_range": time_range, "limit": str(config.top_limit)},
+        )
+        items = payload.get("items", [])
+        if not isinstance(items, list):
+            raise SpotifyApiError("Spotify top artists response did not include an 'items' list")
+        top_artists[time_range] = [
+            _normalize_artist(item, source=f"spotify_top_artist_{time_range}")
+            for item in items
+            if isinstance(item, dict)
+        ]
+    return top_artists
+
+
+def fetch_top_tracks(config: SpotifyConfig, access_token: str) -> dict[str, list[dict[str, Any]]]:
+    """Fetch user's top tracks across Spotify's supported time ranges."""
+    top_tracks: dict[str, list[dict[str, Any]]] = {}
+    artist_ids: list[str] = []
+    for time_range in ["short_term", "medium_term", "long_term"]:
+        payload = _spotify_get(
+            "/me/top/tracks",
+            access_token,
+            query_params={"time_range": time_range, "limit": str(config.top_limit)},
+        )
+        items = payload.get("items", [])
+        if not isinstance(items, list):
+            raise SpotifyApiError("Spotify top tracks response did not include an 'items' list")
+        normalized_tracks = [
+            _normalize_track(item, source=f"spotify_top_track_{time_range}")
+            for item in items
+            if isinstance(item, dict)
+        ]
+        top_tracks[time_range] = normalized_tracks
+        artist_ids.extend(_unique_artist_ids(normalized_tracks))
+
+    artists_by_id = fetch_artists_by_id(_dedupe_strings(artist_ids), access_token)
+    return {
+        time_range: _enrich_tracks_with_artist_metadata(tracks, artists_by_id)
+        for time_range, tracks in top_tracks.items()
+    }
+
+
+def fetch_saved_tracks(config: SpotifyConfig, access_token: str) -> list[dict[str, Any]]:
+    """Fetch the most recently saved tracks from the user's library."""
+    payload = _spotify_get(
+        "/me/tracks",
+        access_token,
+        query_params={"limit": str(config.saved_track_limit)},
+    )
+    items = payload.get("items", [])
+    if not isinstance(items, list):
+        raise SpotifyApiError("Spotify saved tracks response did not include an 'items' list")
+
+    saved_tracks = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        track = item.get("track", {})
+        if isinstance(track, dict):
+            normalized = _normalize_track(track, source="spotify_saved_track")
+            normalized["saved_at"] = item.get("added_at")
+            saved_tracks.append(normalized)
+
+    artist_ids = _unique_artist_ids(saved_tracks)
+    artists_by_id = fetch_artists_by_id(artist_ids, access_token)
+    return _enrich_tracks_with_artist_metadata(saved_tracks, artists_by_id)
+
+
+def fetch_followed_artists(config: SpotifyConfig, access_token: str) -> list[dict[str, Any]]:
+    """Fetch followed artists from Spotify's cursor-based following endpoint."""
+    payload = _spotify_get(
+        "/me/following",
+        access_token,
+        query_params={"type": "artist", "limit": str(config.followed_artist_limit)},
+    )
+    artists_page = payload.get("artists", {})
+    if not isinstance(artists_page, dict):
+        raise SpotifyApiError("Spotify followed artists response did not include an 'artists' page")
+    items = artists_page.get("items", [])
+    if not isinstance(items, list):
+        raise SpotifyApiError("Spotify followed artists response did not include an 'items' list")
+    return [
+        _normalize_artist(item, source="spotify_followed_artist")
+        for item in items
+        if isinstance(item, dict)
+    ]
 
 
 def enrich_plays_with_artist_metadata(
@@ -77,28 +211,34 @@ def enrich_plays_with_artist_metadata(
         return recent_plays
 
     artists_by_id = fetch_artists_by_id(artist_ids, access_token)
-    enriched_plays = []
-    for play in recent_plays:
-        enriched_play = dict(play)
-        artist_id = play.get("spotify_artist_id")
+    return _enrich_tracks_with_artist_metadata(recent_plays, artists_by_id)
+
+
+def _enrich_tracks_with_artist_metadata(
+    tracks: list[dict[str, Any]], artists_by_id: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    enriched_tracks = []
+    for track in tracks:
+        enriched_track = dict(track)
+        artist_id = track.get("spotify_artist_id")
         artist = artists_by_id.get(str(artist_id), {})
         genres = artist.get("genres", [])
         if isinstance(genres, list):
-            enriched_play["genres"] = genres
-        enriched_play["spotify_artist_popularity"] = artist.get("popularity")
-        enriched_play["spotify_artist_followers"] = (
+            enriched_track["genres"] = genres
+        enriched_track["spotify_artist_popularity"] = artist.get("popularity")
+        enriched_track["spotify_artist_followers"] = (
             artist.get("followers", {}).get("total")
             if isinstance(artist.get("followers"), dict)
             else None
         )
-        enriched_play["spotify_artist_url"] = (
+        enriched_track["spotify_artist_url"] = (
             artist.get("external_urls", {}).get("spotify")
             if isinstance(artist.get("external_urls"), dict)
             else None
         )
-        enriched_plays.append(enriched_play)
+        enriched_tracks.append(enriched_track)
 
-    return enriched_plays
+    return enriched_tracks
 
 
 def fetch_artists_by_id(
@@ -120,10 +260,13 @@ def fetch_artists_by_id(
 def get_access_token(config: SpotifyConfig) -> str:
     """Return a valid access token, refreshing or running local auth as needed."""
     cached_token = _load_token_cache(config.token_cache_path)
-    if _has_valid_access_token(cached_token):
+    if _has_valid_access_token(cached_token) and _has_required_scopes(cached_token):
         return str(cached_token["access_token"])
 
-    if cached_token.get("refresh_token"):
+    if cached_token.get("access_token") and not _has_required_scopes(cached_token):
+        print("Spotify token is missing newer taste-analysis scopes; starting reauthorization.")
+
+    if cached_token.get("refresh_token") and _has_required_scopes(cached_token):
         refreshed_token = _refresh_access_token(config, str(cached_token["refresh_token"]))
         _save_token_cache(config.token_cache_path, refreshed_token)
         return str(refreshed_token["access_token"])
@@ -190,6 +333,13 @@ def build_config_from_env(base_dir: Path) -> SpotifyConfig:
         os.environ.get("SPOTIFY_PENDING_AUTH", base_dir / ".spotify_auth_pending.json")
     )
     limit = int(os.environ.get("SPOTIFY_RECENT_LIMIT", "50"))
+    top_limit = int(os.environ.get("SPOTIFY_TOP_LIMIT", str(DEFAULT_TOP_LIMIT)))
+    saved_track_limit = int(
+        os.environ.get("SPOTIFY_SAVED_TRACK_LIMIT", str(DEFAULT_SAVED_TRACK_LIMIT))
+    )
+    followed_artist_limit = int(
+        os.environ.get("SPOTIFY_FOLLOWED_ARTIST_LIMIT", str(DEFAULT_FOLLOWED_ARTIST_LIMIT))
+    )
     open_browser = os.environ.get("SPOTIFY_OPEN_BROWSER", "true").lower() not in {
         "0",
         "false",
@@ -202,6 +352,9 @@ def build_config_from_env(base_dir: Path) -> SpotifyConfig:
         token_cache_path=token_cache,
         pending_auth_path=pending_auth,
         limit=min(max(limit, 1), 50),
+        top_limit=min(max(top_limit, 1), 50),
+        saved_track_limit=min(max(saved_track_limit, 1), 50),
+        followed_artist_limit=min(max(followed_artist_limit, 1), 50),
         open_browser=open_browser,
     )
 
@@ -210,7 +363,7 @@ def build_authorization_url(config: SpotifyConfig, pending_auth: dict[str, Any])
     auth_params = {
         "response_type": "code",
         "client_id": config.client_id,
-        "scope": SPOTIFY_RECENTLY_PLAYED_SCOPE,
+        "scope": SPOTIFY_AUTH_SCOPE,
         "redirect_uri": config.redirect_uri,
         "state": pending_auth["state"],
         "code_challenge_method": "S256",
@@ -293,8 +446,15 @@ def _send_json_request(request: Request) -> dict[str, Any]:
 
 def _normalize_play_history_item(item: dict[str, Any]) -> dict[str, Any]:
     track = item.get("track", {})
+    normalized = _normalize_track(track, source="spotify_recent_play")
+    normalized["played_at"] = item.get("played_at")
+    return normalized
+
+
+def _normalize_track(track: dict[str, Any], source: str) -> dict[str, Any]:
     artists = track.get("artists", [])
     primary_artist = artists[0] if artists else {}
+    album = track.get("album", {})
 
     return {
         "artist": primary_artist.get("name", "Unknown Artist"),
@@ -302,11 +462,30 @@ def _normalize_play_history_item(item: dict[str, Any]) -> dict[str, Any]:
         "genres": [],
         "moods": [],
         "energy": 0.5,
-        "played_at": item.get("played_at"),
         "spotify_track_id": track.get("id"),
         "spotify_artist_id": primary_artist.get("id"),
         "spotify_url": track.get("external_urls", {}).get("spotify"),
-        "source": "spotify",
+        "source": source,
+        "album": album.get("name") if isinstance(album, dict) else None,
+        "track_popularity": track.get("popularity"),
+    }
+
+
+def _normalize_artist(artist: dict[str, Any], source: str) -> dict[str, Any]:
+    followers = artist.get("followers", {})
+    external_urls = artist.get("external_urls", {})
+    return {
+        "artist": artist.get("name", "Unknown Artist"),
+        "spotify_artist_id": artist.get("id"),
+        "genres": artist.get("genres", []) if isinstance(artist.get("genres"), list) else [],
+        "spotify_artist_popularity": artist.get("popularity"),
+        "spotify_artist_followers": (
+            followers.get("total") if isinstance(followers, dict) else None
+        ),
+        "spotify_artist_url": (
+            external_urls.get("spotify") if isinstance(external_urls, dict) else None
+        ),
+        "source": source,
     }
 
 
@@ -320,6 +499,17 @@ def _unique_artist_ids(recent_plays: list[dict[str, Any]]) -> list[str]:
         seen.add(artist_id)
         artist_ids.append(str(artist_id))
     return artist_ids
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    seen = set()
+    deduped = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+    return deduped
 
 
 def _chunks(values: list[str], size: int) -> list[list[str]]:
@@ -394,3 +584,8 @@ def _save_token_cache(path: Path, token: dict[str, Any]) -> None:
 
 def _has_valid_access_token(token: dict[str, Any]) -> bool:
     return bool(token.get("access_token")) and int(token.get("expires_at", 0)) > int(time.time())
+
+
+def _has_required_scopes(token: dict[str, Any]) -> bool:
+    granted_scopes = set(str(token.get("scope", "")).split())
+    return set(SPOTIFY_SCOPES).issubset(granted_scopes)

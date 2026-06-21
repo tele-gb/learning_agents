@@ -1,0 +1,226 @@
+{
+  "listener_profile": {
+    "version": 1,
+    "last_updated": "2026-06-21",
+
+    "discovery_anchors": [
+      {
+        "artist": "Big Thief",
+        "weight": 10,
+        "reason": "Recent discovery that became an obsession."
+      },
+      {
+        "artist": "MJ Lenderman",
+        "weight": 10,
+        "reason": "Recent discovery that became an obsession."
+      },
+      {
+        "artist": "Orchards",
+        "weight": 9,
+        "reason": "Recent discovery with exceptional live impact."
+      }
+    ],
+
+    "automatic_ticket_purchase": [
+      {
+        "artist": "The Hold Steady",
+        "weight": 10
+      },
+      {
+        "artist": "Craig Finn",
+        "weight": 10
+      }
+    ],
+
+    "live_preferences": {
+      "positive_signals": [
+        "emotional authenticity",
+        "strong songwriting",
+        "distinctive vocals",
+        "genuine stage presence",
+        "high energy performances",
+        "memorable lyrics",
+        "performers with a strong point of view",
+        "guitar-based music",
+        "discovery-oriented artists",
+        "artists with exceptional live reputations"
+      ],
+      "negative_signals": [
+        "style over substance",
+        "overly polished performances",
+        "generic genre matches",
+        "mainstream chart focus",
+        "artists recommended solely because of genre tags"
+      ]
+    },
+
+    "recommendation_bias": {
+      "prefer_songwriting_similarity": true,
+      "prefer_scene_overlap": true,
+      "prefer_live_reputation": true,
+      "prefer_artist_similarity": true,
+      "prefer_genre_similarity": false
+    },
+
+    "known_artists": [
+      "Big Thief",
+      "MJ Lenderman",
+      "Neko Case",
+      "The Hold Steady",
+      "Craig Finn",
+      "This Is The Kit",
+      "Bonny Light Horseman",
+      "Richard Dawson",
+      "Lisa O'Neill",
+      "Jeffrey Martin",
+      "Johnny Flynn",
+      "Purple Mountains",
+      "Anne Briggs",
+      "June Tabor"
+    ],
+
+    "notes": [
+      "Not strongly venue-driven.",
+      "Responds well to artists whose live reputation exceeds their recorded output.",
+      "Values authenticity over production.",
+      "Often discovers favourite artists through smaller gigs rather than established fandom.",
+      "A successful recommendation should feel like a future obsession, not merely a genre match."
+    ]
+  },
+
+  "gigs_attended": [
+    {
+      "artist": "Jeffrey Martin",
+      "venue": "Sunflower Lounge",
+      "rating": 10,
+      "would_go_again": true,
+      "notes": "Atmospheric, emotional performance. Better live than on record.",
+      "tags": [
+        "emotional",
+        "intimate",
+        "songwriting",
+        "authentic"
+      ]
+    },
+    {
+      "artist": "The Crocodile Club",
+      "venue": "O2 Institute",
+      "rating": 5,
+      "would_go_again": false,
+      "notes": "Mixed showcase. The Teals stood out.",
+      "tags": [
+        "showcase",
+        "mixed quality"
+      ]
+    },
+    {
+      "artist": "Sarah Kinsley",
+      "venue": "O2 Institute",
+      "rating": 7,
+      "would_go_again": false,
+      "notes": "Good performance but not quite the right fit.",
+      "tags": [
+        "good performer",
+        "not quite for me"
+      ]
+    },
+    {
+      "artist": "The Rogues",
+      "venue": "Dublin",
+      "rating": 6,
+      "would_go_again": false,
+      "notes": "Enjoyable but not especially memorable.",
+      "tags": [
+        "solid",
+        "traditional"
+      ]
+    },
+    {
+      "artist": "Sunflower Thieves",
+      "venue": "Digbeth Gallery",
+      "rating": 3,
+      "would_go_again": false,
+      "notes": "Did not connect with the performance.",
+      "tags": [
+        "low connection"
+      ]
+    },
+    {
+      "artist": "Green Gardens",
+      "venue": "Hare & Hounds",
+      "rating": 8,
+      "would_go_again": true,
+      "notes": "Strong live performance.",
+      "tags": [
+        "indie",
+        "live energy",
+        "would see again"
+      ]
+    },
+    {
+      "artist": "Pure Adult",
+      "venue": "Sunflower Lounge",
+      "rating": 7,
+      "would_go_again": false,
+      "notes": "Interesting and worthwhile, but no need to repeat.",
+      "tags": [
+        "interesting",
+        "one time experience"
+      ]
+    },
+    {
+      "artist": "Personal Trainer",
+      "venue": "Castle & Falcon",
+      "rating": 6,
+      "would_go_again": false,
+      "notes": "Good but not compelling enough for a repeat visit.",
+      "tags": [
+        "competent",
+        "moderate interest"
+      ]
+    },
+    {
+      "artist": "Westside Cowboy",
+      "venue": "Castle & Falcon",
+      "rating": 8,
+      "would_go_again": true,
+      "notes": "Strong performance and would happily see again.",
+      "tags": [
+        "live energy",
+        "would see again"
+      ]
+    },
+    {
+      "artist": "Orchards",
+      "venue": "The Flapper",
+      "rating": 10,
+      "would_go_again": true,
+      "notes": "Exceptional energy, great guitar playing and sharp hooks.",
+      "tags": [
+        "high energy",
+        "great musicianship",
+        "hooks",
+        "live highlight"
+      ]
+    }
+  ],
+
+  "live_history_summary": {
+    "best_ever_gig": "The Postal Service",
+    "artists_would_buy_tickets_for_immediately": [
+      "The Hold Steady",
+      "Craig Finn"
+    ],
+    "recent_discoveries_that_became_obsessions": [
+      "Big Thief",
+      "MJ Lenderman",
+      "Orchards"
+    ],
+    "artists_with_live_reputation_exceeding_recorded_interest": [
+      "Jeffrey Martin"
+    ],
+    "interesting_but_not_repeat_viewing": [
+      "Pure Adult"
+    ]
+  }
+}

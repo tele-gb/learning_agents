@@ -45,6 +45,12 @@ def _choose_similar_artists(top_artists: list[str], gig_genres: list[str]) -> li
 def _style_summary(gig: dict[str, Any]) -> str:
     genres = ", ".join(gig.get("genres", []))
     moods = ", ".join(gig.get("moods", []))
+    if genres and moods:
+        return f"{genres} with a {moods} feel"
+    if genres:
+        return genres
+    if moods:
+        return f"{moods} feel"
     return f"{genres} with a {moods} feel"
 
 
