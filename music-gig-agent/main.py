@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -39,9 +40,11 @@ from collectors.web_gig_collector import (
     DEFAULT_GIG_SEARCH_MAX_RESULTS,
     GigSearchError,
     build_gig_search_payload,
+    collect_gigs_from_sources,
     collect_gigs_with_openai,
     default_date_from,
     default_date_to,
+    merge_fresh_collections,
     merge_with_existing_gig_pool,
     write_collected_gigs,
     write_gig_search_payload_preview,
@@ -58,6 +61,7 @@ COLLECTED_GIG_DATA_PATH = BASE_DIR / "data" / "collected_gigs.json"
 GIG_SEARCH_SNAPSHOT_DIR = BASE_DIR / "data" / "gig_search_snapshots"
 GIG_HISTORY_PATH = BASE_DIR / "data" / "user_history" / "gigs_attended.json"
 REPORT_PATH = BASE_DIR / "output" / "monthly_report.md"
+HTML_REPORT_PATH = BASE_DIR / "output" / "monthly_report.html"
 LLM_TASTE_PROFILE_PATH = BASE_DIR / "output" / "taste_profile_llm.json"
 LLM_INPUT_PREVIEW_PATH = BASE_DIR / "output" / "llm_taste_profile_input.json"
 GIG_ENRICHMENT_INPUT_PREVIEW_PATH = BASE_DIR / "output" / "gig_enrichment_input.json"
@@ -163,44 +167,122 @@ def main() -> None:
     gig_search_date_from = args.gig_search_from or default_date_from()
     gig_search_date_to = args.gig_search_to or default_date_to()
     if args.dry_run_gig_search:
-        payload = build_gig_search_payload(
-            args.gig_city,
-            gig_search_date_from,
-            gig_search_date_to,
-            args.gig_search_max_results,
-            gig_search_model,
-        )
+        priority_artists = build_gig_search_priority_artists(recent_plays, taste_profile)
+        if args.deep_gig_search:
+            payload = {
+                "search_type": "deep_multi_pass",
+                "passes": [
+                    build_gig_search_payload(
+                        args.gig_city,
+                        gig_search_date_from,
+                        gig_search_date_to,
+                        args.gig_search_max_results,
+                        gig_search_model,
+                        search_mode="broad_discovery",
+                    ),
+                    build_gig_search_payload(
+                        args.gig_city,
+                        gig_search_date_from,
+                        gig_search_date_to,
+                        args.gig_search_max_results,
+                        gig_search_model,
+                        search_mode="venue_calendar_sweep",
+                    ),
+                    build_gig_search_payload(
+                        args.gig_city,
+                        gig_search_date_from,
+                        gig_search_date_to,
+                        args.gig_search_max_results,
+                        gig_search_model,
+                        search_mode="taste_artist_sweep",
+                        priority_artists=priority_artists,
+                    ),
+                ],
+            }
+        else:
+            payload = build_gig_search_payload(
+                args.gig_city,
+                gig_search_date_from,
+                gig_search_date_to,
+                args.gig_search_max_results,
+                gig_search_model,
+                priority_artists=priority_artists,
+            )
         write_gig_search_payload_preview(GIG_SEARCH_INPUT_PREVIEW_PATH, payload)
         print(f"Saved OpenAI gig-search dry-run payload: {GIG_SEARCH_INPUT_PREVIEW_PATH}")
         print("No OpenAI API call was made.")
         return
 
     if args.collect_gigs:
-        if not args.confirm_openai_search_cost:
+        if not args.skip_openai_gig_search and not args.confirm_openai_search_cost:
             raise RuntimeError(
                 "Refusing to call OpenAI web search without --confirm-openai-search-cost. "
                 "Run --dry-run-gig-search first to inspect the payload."
             )
         try:
-            collected_gigs = collect_gigs_with_openai(
-                args.gig_city,
-                gig_search_date_from,
-                gig_search_date_to,
-                args.gig_search_max_results,
-                gig_search_model,
-            )
+            priority_artists = build_gig_search_priority_artists(recent_plays, taste_profile)
+            fresh_collections = []
+            if args.deterministic_gig_search:
+                source_gigs = collect_gigs_from_sources(
+                    args.gig_city,
+                    gig_search_date_from,
+                    gig_search_date_to,
+                    args.gig_search_max_results,
+                    priority_artists=priority_artists,
+                )
+                fresh_collections.append(source_gigs)
+                print(
+                    "Collected "
+                    f"{source_gigs['gig_count']} gigs with deterministic source search."
+                )
+            if not args.skip_openai_gig_search:
+                openai_gigs = collect_gigs_with_openai(
+                    args.gig_city,
+                    gig_search_date_from,
+                    gig_search_date_to,
+                    args.gig_search_max_results,
+                    gig_search_model,
+                    priority_artists=priority_artists,
+                    deep_search=args.deep_gig_search,
+                )
+                fresh_collections.append(openai_gigs)
+                print(f"Collected {openai_gigs['gig_count']} gigs with OpenAI web search.")
+            if not fresh_collections:
+                raise GigSearchError("No gig search mode selected.")
+            if len(fresh_collections) == 1:
+                collected_gigs = fresh_collections[0]
+            else:
+                collected_gigs = merge_fresh_collections(
+                    fresh_collections,
+                    args.gig_city,
+                    gig_search_date_from,
+                    gig_search_date_to,
+                    args.gig_search_max_results,
+                )
         except GigSearchError as error:
             raise SystemExit(f"OpenAI gig search failed: {error}") from error
         snapshot_path = write_gig_search_snapshot(GIG_SEARCH_SNAPSHOT_DIR, collected_gigs)
-        merged_gigs = merge_with_existing_gig_pool(
-            COLLECTED_GIG_DATA_PATH,
-            collected_gigs,
-            gig_search_date_from,
-            gig_search_date_to,
-        )
+        if args.replace_collected_gigs:
+            merged_gigs = dict(collected_gigs)
+            merged_gigs["source"] = "fresh_gig_pool"
+            merged_gigs["pool_updated_at"] = datetime.now().astimezone().isoformat()
+            merged_gigs["search_notes"] = [
+                *collected_gigs.get("search_notes", []),
+                "Replaced the rolling gig pool with this fresh search.",
+            ]
+        else:
+            merged_gigs = merge_with_existing_gig_pool(
+                COLLECTED_GIG_DATA_PATH,
+                collected_gigs,
+                gig_search_date_from,
+                gig_search_date_to,
+            )
         write_collected_gigs(COLLECTED_GIG_DATA_PATH, merged_gigs)
-        print(f"Collected {collected_gigs['gig_count']} gigs with OpenAI web search.")
-        print(f"Merged rolling gig pool now has {merged_gigs['gig_count']} gigs.")
+        print(f"Collected {collected_gigs['gig_count']} total fresh gigs.")
+        if args.replace_collected_gigs:
+            print(f"Replaced rolling gig pool with {merged_gigs['gig_count']} fresh gigs.")
+        else:
+            print(f"Merged rolling gig pool now has {merged_gigs['gig_count']} gigs.")
         print(f"Saved collected gigs: {COLLECTED_GIG_DATA_PATH}")
         print(f"Saved gig search snapshot: {snapshot_path}")
 
@@ -266,11 +348,14 @@ def main() -> None:
         live_taste_profile,
     )
     print(f"Created report: {REPORT_PATH}")
+    if HTML_REPORT_PATH.exists():
+        print(f"Created HTML report: {HTML_REPORT_PATH}")
 
     if args.email_report:
         try:
             send_report_email(
                 REPORT_PATH,
+                html_report_path=HTML_REPORT_PATH,
                 to_address=args.email_to,
                 subject=args.email_subject,
             )
@@ -345,6 +430,11 @@ def parse_args() -> argparse.Namespace:
         help="Use data/collected_gigs.json instead of data/mock_gigs.json if it exists.",
     )
     parser.add_argument(
+        "--replace-collected-gigs",
+        action="store_true",
+        help="When collecting gigs, overwrite the rolling gig pool with the fresh search instead of merging old entries.",
+    )
+    parser.add_argument(
         "--gig-city",
         default="Birmingham",
         help="City to search for gig listings. Default: Birmingham.",
@@ -362,6 +452,21 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=DEFAULT_GIG_SEARCH_MAX_RESULTS,
         help=f"Maximum gig listings to request. Default: {DEFAULT_GIG_SEARCH_MAX_RESULTS}.",
+    )
+    parser.add_argument(
+        "--deep-gig-search",
+        action="store_true",
+        help="Run broad discovery, venue-calendar, and taste-targeted artist search passes, then merge and dedupe the results.",
+    )
+    parser.add_argument(
+        "--deterministic-gig-search",
+        action="store_true",
+        help="Query fixed listing sources with venue/artist terms and parse event pages before optional OpenAI discovery.",
+    )
+    parser.add_argument(
+        "--skip-openai-gig-search",
+        action="store_true",
+        help="Use deterministic gig source search only; useful for debugging collection without an OpenAI web-search call.",
     )
     parser.add_argument(
         "--gig-search-model",
@@ -407,10 +512,13 @@ def parse_args() -> argparse.Namespace:
             "Use --dry-run-llm-input first to inspect the payload."
         )
     if args.collect_gigs and not args.confirm_openai_search_cost and not args.dry_run_gig_search:
-        parser.error(
-            "--collect-gigs requires --confirm-openai-search-cost. "
-            "Use --dry-run-gig-search first to inspect the payload."
-        )
+        if not args.skip_openai_gig_search:
+            parser.error(
+                "--collect-gigs requires --confirm-openai-search-cost unless --skip-openai-gig-search is used. "
+                "Use --dry-run-gig-search first to inspect the payload."
+            )
+    if args.skip_openai_gig_search and not args.deterministic_gig_search:
+        parser.error("--skip-openai-gig-search requires --deterministic-gig-search.")
     if args.llm_gig_enrichment and not args.confirm_openai_cost and not args.dry_run_gig_enrichment_input:
         parser.error(
             "--llm-gig-enrichment requires --confirm-openai-cost. "
@@ -466,6 +574,22 @@ def spotify_taste_context_counts(spotify_taste_context: dict[str, Any]) -> dict[
         "saved_tracks": len(spotify_taste_context.get("saved_tracks", [])),
         "followed_artists": len(spotify_taste_context.get("followed_artists", [])),
     }
+
+
+def build_gig_search_priority_artists(
+    recent_plays: list[dict[str, Any]],
+    taste_profile: dict[str, Any],
+    limit: int = 24,
+) -> list[str]:
+    counts: Counter[str] = Counter()
+    for artist, count in taste_profile.get("top_artists", []):
+        if str(artist).strip():
+            counts[str(artist).strip()] += int(count)
+    for play in recent_plays:
+        artist = str(play.get("artist", "")).strip()
+        if artist:
+            counts[artist] += 1
+    return [artist for artist, _count in counts.most_common(limit)]
 
 
 def resolve_llm_max_recent_plays(args: argparse.Namespace) -> int:

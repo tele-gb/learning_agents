@@ -10,24 +10,39 @@ class EmailConfigError(RuntimeError):
 
 def send_report_email(
     report_path: Path,
+    html_report_path: Path | None = None,
     to_address: str | None = None,
     subject: str | None = None,
 ) -> None:
-    """Send the Markdown report using SMTP settings from environment variables."""
+    """Send the report using SMTP settings from environment variables."""
     config = _load_email_config(to_address, subject)
     report_text = report_path.read_text(encoding="utf-8")
+    html_report = (
+        html_report_path.read_text(encoding="utf-8")
+        if html_report_path and html_report_path.exists()
+        else None
+    )
 
     message = EmailMessage()
     message["Subject"] = config["subject"]
     message["From"] = config["from_address"]
     message["To"] = ", ".join(config["to_addresses"])
     message.set_content(report_text)
+    if html_report:
+        message.add_alternative(html_report, subtype="html")
     message.add_attachment(
         report_text.encode("utf-8"),
         maintype="text",
         subtype="markdown",
         filename=report_path.name,
     )
+    if html_report and html_report_path:
+        message.add_attachment(
+            html_report.encode("utf-8"),
+            maintype="text",
+            subtype="html",
+            filename=html_report_path.name,
+        )
 
     if config["use_ssl"]:
         with smtplib.SMTP_SSL(config["host"], config["port"], timeout=30) as smtp:

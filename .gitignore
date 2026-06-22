@@ -12,6 +12,7 @@ music-gig-agent/data/spotify_snapshots/*.json
 music-gig-agent/data/gig_search_snapshots/*.json
 music-gig-agent/data/collected_gigs.json
 music-gig-agent/output/*.md
+music-gig-agent/output/*.html
 music-gig-agent/output/*.json
 music-gig-agent/output/*.log
 !music-gig-agent/data/spotify_snapshots/.gitkeep

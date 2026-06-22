@@ -8,7 +8,8 @@ from urllib.request import Request, urlopen
 
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
-DEFAULT_GIG_ENRICHMENT_LIMIT = 20
+DEFAULT_GIG_ENRICHMENT_LIMIT = 50
+OPENAI_GIG_ENRICHMENT_TIMEOUT_SECONDS = 240
 
 
 class OpenAIGigEnrichmentError(RuntimeError):
@@ -63,7 +64,10 @@ def build_llm_gig_enrichment_payload(
                     "probably sounds like, why this listener might care, why it might "
                     "miss, a first song to try, and small score hints. Be direct and "
                     "judgemental. Prefer live-history signals and artist fit over "
-                    "generic genre matching. If evidence is thin, say so in warnings."
+                    "generic genre matching. Similar artists must be specific to that "
+                    "candidate artist, not copied from the listener profile or repeated "
+                    "across adjacent recommendations. If evidence is thin, say so in "
+                    "warnings."
                 ),
             },
             {
@@ -198,12 +202,16 @@ def _send_openai_request(payload: dict[str, Any], api_key: str) -> dict[str, Any
         method="POST",
     )
     try:
-        with urlopen(request, timeout=120) as response:
+        with urlopen(request, timeout=OPENAI_GIG_ENRICHMENT_TIMEOUT_SECONDS) as response:
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as error:
         details = error.read().decode("utf-8")
         raise OpenAIGigEnrichmentError(
             f"OpenAI gig enrichment failed: {error.code} {_redact_sensitive_details(details)}"
+        ) from error
+    except TimeoutError as error:
+        raise OpenAIGigEnrichmentError(
+            "OpenAI gig enrichment timed out while waiting for a response."
         ) from error
 
 

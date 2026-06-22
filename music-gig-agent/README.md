@@ -12,7 +12,7 @@ By default it uses local JSON files and deterministic placeholder analysis so th
 - Spotify snapshots: use `--save-spotify-snapshot` to write dated live-listening and taste-context history under `data/spotify_snapshots/`.
 - Gig attendance history: `data/user_history/gigs_attended.json` is loaded into a live taste profile for report context.
 - LLM taste profile: use `--llm-taste-profile` with `OPENAI_API_KEY` to create `output/taste_profile_llm.json` and add an interpretive section to the report.
-- Gig web search: use `--collect-gigs` with `--confirm-openai-search-cost` to collect sourced Birmingham listings into a rolling pool at `data/collected_gigs.json`.
+- Gig web search: use `--collect-gigs` with `--confirm-openai-search-cost` to collect sourced Birmingham and West Midlands listings into `data/collected_gigs.json`.
 - Live Spotify enrichment: recent plays are enriched with Spotify artist genres, popularity, follower counts, and artist URLs.
 - Live Spotify limitation: moods and energy are not reliable Spotify signals here; the LLM taste profile is instructed to ignore the local neutral energy placeholder.
 - Handoff notes and next steps live in `PROJECT_LOG.md`.
@@ -23,7 +23,7 @@ By default it uses local JSON files and deterministic placeholder analysis so th
 2. Build a taste profile from recent plays, top artists, top tracks, saved tracks, followed artists, genres, moods, and energy levels
 3. Load attended-gig history from `data/user_history/gigs_attended.json`
 4. Build a live taste profile from ratings, tags, repeat intent, and venue history
-5. Load Birmingham gig candidates from `data/mock_gigs.json`
+5. Load Birmingham and West Midlands gig candidates from `data/mock_gigs.json`
 6. Enrich each gig with placeholder analysis:
    - style summary
    - similar artists
@@ -37,7 +37,7 @@ By default it uses local JSON files and deterministic placeholder analysis so th
    - venue fit
    - novelty fit
    - evidence quality
-8. Write `output/monthly_report.md`
+8. Write `output/monthly_report.md` and `output/monthly_report.html`
 
 ## Run
 
@@ -224,7 +224,19 @@ output/gig_search_input.json
 
 No OpenAI API call is made during a dry run.
 
-By default, gig search looks at the next 60 days and asks for a broad, high-volume discovery pool. It is intentionally not limited to obvious taste matches because weird sourced candidates are useful.
+By default, gig search looks at the next 60 days and asks for a broad, high-volume discovery pool across Birmingham and the wider West Midlands, including nearby towns such as Wolverhampton, Warwick, Coventry, and Leamington Spa. It is intentionally not limited to obvious taste matches because weird sourced candidates are useful.
+
+For a more reliable run, use deterministic gig search plus deep gig search. The deterministic pass queries fixed listing sources with venue and artist search terms, fetches event-looking pages, and parses structured event data. Deep search then adds OpenAI web-search passes for broad discovery, named venue calendars, and high-priority artists from your listening history. The results are merged and deduped:
+
+```bash
+python3 main.py --spotify --collect-gigs --deterministic-gig-search --deep-gig-search --confirm-openai-search-cost
+```
+
+To debug the deterministic collector without making an OpenAI web-search call:
+
+```bash
+python3 main.py --spotify --collect-gigs --deterministic-gig-search --skip-openai-gig-search
+```
 
 When ready, explicitly confirm the web-search call:
 
@@ -240,6 +252,12 @@ data/gig_search_snapshots/
 ```
 
 Generated gig listings are ignored by git by default. The collector rejects results without a source URL, artist, venue, ISO-like date, source name, and minimum confidence. Existing pool entries outside the active search window are pruned, duplicates are collapsed by artist/date/venue, and the best-confidence evidence is kept. The report displays listing evidence for sourced gigs.
+
+To start clean and avoid carrying older search results into the next report:
+
+```bash
+python3 main.py --spotify --collect-gigs --replace-collected-gigs --deterministic-gig-search --deep-gig-search --confirm-openai-search-cost
+```
 
 For a bigger discovery sweep:
 
@@ -299,7 +317,7 @@ Then run:
 python3 main.py --use-collected-gigs --email-report
 ```
 
-The report is sent as the email body and attached as `monthly_report.md`.
+The report is sent with a styled HTML body, with `monthly_report.md` and `monthly_report.html` attached.
 
 ## Schedule Every 3 Days
 
