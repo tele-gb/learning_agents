@@ -1,4 +1,5 @@
 .venv/
+.tools/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -15,6 +16,7 @@ music-gig-agent/output/*.md
 music-gig-agent/output/*.html
 music-gig-agent/output/*.json
 music-gig-agent/output/*.log
+music-gig-agent/web_data/
 !music-gig-agent/data/spotify_snapshots/.gitkeep
 !music-gig-agent/data/gig_search_snapshots/.gitkeep
 !music-gig-agent/output/.gitkeep

@@ -339,6 +339,45 @@ The scheduler writes its own log to:
 output/scheduled_pipeline.log
 ```
 
+## Local Pi Web App POC
+
+The local web app lets another Spotify user connect from a browser, run a refresh, and see a dashboard backed by SQLite on the Pi. It is a proof of concept, not a public deployment.
+
+For same-machine testing, add this redirect URI to the Spotify app:
+
+```text
+http://127.0.0.1:8000/auth/spotify/callback
+```
+
+For another device on the same Wi-Fi, use the Pi hostname or LAN IP instead. The redirect URI must match exactly:
+
+```text
+WEBAPP_BASE_URL=http://raspberrypi.local:8000
+SPOTIFY_WEB_REDIRECT_URI=http://raspberrypi.local:8000/auth/spotify/callback
+```
+
+Add tester Spotify emails in the Spotify app's development user allowlist.
+
+Run the app on the Pi:
+
+```bash
+python3 web_app.py
+```
+
+Then open:
+
+```text
+http://raspberrypi.local:8000
+```
+
+The POC stores users, sessions, Spotify tokens, and generated dashboard reports in:
+
+```text
+web_data/app.sqlite3
+```
+
+Keep `web_data/` private and untracked. The first dashboard refresh uses the current collected gig pool if `data/collected_gigs.json` exists, otherwise it falls back to mock gigs.
+
 ## Future Integration Points
 
 - `collectors/spotify_collector.py`: add longer-term history loading from dated Spotify snapshots.
