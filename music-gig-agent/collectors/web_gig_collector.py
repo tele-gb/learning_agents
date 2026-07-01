@@ -13,6 +13,15 @@ DEFAULT_GIG_SEARCH_MODEL = "gpt-5.2"
 DEFAULT_GIG_SEARCH_DAYS = 60
 DEFAULT_GIG_SEARCH_MAX_RESULTS = 50
 MIN_GIG_CONFIDENCE = 0.65
+GIG_SEARCH_SOURCE_TARGETS = [
+    "https://www.gig-guide.co.uk/",
+    "venue websites",
+    "promoter pages",
+    "ticketing platforms",
+    "artist websites",
+    "local listings",
+]
+
 
 
 class GigSearchError(RuntimeError):
@@ -25,6 +34,8 @@ def build_gig_search_payload(
     date_to: str,
     max_results: int,
     model: str,
+    exhaustive: bool = False,
+    focus_query: str | None = None,
 ) -> dict[str, Any]:
     """Build the exact OpenAI web-search payload without sending it."""
     return {
@@ -32,7 +43,7 @@ def build_gig_search_payload(
         "tools": [
             {
                 "type": "web_search",
-                "search_context_size": "low",
+                "search_context_size": "high" if exhaustive else "low",
                 "user_location": {
                     "type": "approximate",
                     "country": "GB",
@@ -79,8 +90,12 @@ def build_gig_search_payload(
                         "date_from": date_from,
                         "date_to": date_to,
                         "max_results": max_results,
+                        "search_mode": "exhaustive" if exhaustive else "broad",
+                        "focus_query": focus_query or "general Birmingham music gig discovery",
                         "preferred_context": [
                             "Birmingham UK venues",
+                            "Gig Guide UK listings",
+                            "gig-guide.co.uk",
                             "high volume discovery",
                             "weird gigs",
                             "niche gigs",
@@ -99,12 +114,13 @@ def build_gig_search_payload(
                             "soul",
                             "interesting live reputation",
                         ],
+                        "source_targets": GIG_SEARCH_SOURCE_TARGETS,
                         "venue_targets": [
                             "Hare & Hounds Kings Heath",
-                            "Sunflower Lounge",
                             "Castle & Falcon",
                             "The Flapper",
                             "The Victoria Birmingham",
+                            "The Sunflower Lounge",
                             "Dead Wax Digbeth",
                             "Mama Roux's",
                             "The Crossing Digbeth",
@@ -116,8 +132,27 @@ def build_gig_search_payload(
                             "Centrala",
                             "Nortons Digbeth",
                             "XOYO Birmingham",
+                            "Kitchen Garden Cafe",
+                            "The Jam House Birmingham",
+                            "The Rainbow Venues",
+                            "The Night Owl Birmingham",
+                            "The Old Crown Digbeth",
+                            "The Asylum Birmingham",
+                            "Red Lion Folk Club"
                         ],
-                        "collection_strategy": [
+                        "collection_strategy": (
+                            [
+                                f"This pass focus is: {focus_query}." if focus_query else "This pass focus is broad Birmingham live music discovery.",
+                                "Run an exhaustive source-by-source audit before returning results.",
+                                "Search Gig Guide first, then each named venue target, then promoter and ticketing sources.",
+                                "For each venue target, look for at least one official venue, promoter, or ticketing listing page covering the requested date range.",
+                                "Do not stop after the first useful source; continue until the requested max_results is filled or every source target and venue target has been checked.",
+                                "Use search_notes to name venues or sources that were checked but returned no valid sourced gigs.",
+                            ]
+                            if exhaustive
+                            else []
+                        ) + [
+                            "Use https://www.gig-guide.co.uk/ as a priority discovery source for Birmingham listings, then corroborate with venue, promoter, ticketing, or artist pages where possible.",
                             "Prioritise returning many evidenced candidates over perfect taste matching.",
                             "Mix obvious listings with strange, niche, local, and lower-profile shows.",
                             "Search multiple sources rather than relying on one aggregator.",
@@ -162,12 +197,22 @@ def collect_gigs_with_openai(
     date_to: str,
     max_results: int,
     model: str,
+    exhaustive: bool = False,
+    focus_query: str | None = None,
 ) -> dict[str, Any]:
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise GigSearchError("Set OPENAI_API_KEY before using --collect-gigs.")
 
-    payload = build_gig_search_payload(city, date_from, date_to, max_results, model)
+    payload = build_gig_search_payload(
+        city,
+        date_from,
+        date_to,
+        max_results,
+        model,
+        exhaustive=exhaustive,
+        focus_query=focus_query,
+    )
     response_payload = _send_openai_request(payload, api_key)
     results = _extract_structured_output(response_payload)
     rejected_gigs: list[dict[str, Any]] = []

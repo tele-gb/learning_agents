@@ -52,6 +52,51 @@ The generated report will be written to:
 output/monthly_report.md
 ```
 
+On this PC, from the workspace root, the project path is:
+
+```bash
+cd /home/kryz/dev/learning_agents/music-gig-agent
+```
+
+No third-party Python packages are needed for the default mock pipeline. Optional
+Spotify, OpenAI, and email features read local settings from `.env`; start from
+`.env.example` and fill in only the integrations you want to enable.
+
+
+## Logical Workflow
+
+The live workflow is split into inspectable stages:
+
+```bash
+# 1. Build Spotify taste profiles
+python3 main.py --build-taste-profile --confirm-openai-cost
+
+# 2. Collect a broad gig pool with focused exhaustive passes
+python3 main.py --collect-gigs-only --exhaustive-gig-search --multi-pass-gig-search --confirm-openai-search-cost
+
+# 3. Enrich the collected gigs against the saved taste profile
+python3 main.py --enrich-gigs --confirm-openai-cost --gig-enrichment-batch-size 6
+
+# 4. Rank enriched gigs and write the report
+python3 main.py --rank-and-report
+```
+
+The same flow can be run in one command:
+
+```bash
+python3 main.py --full-live-pipeline --confirm-openai-cost --confirm-openai-search-cost --gig-enrichment-batch-size 6
+```
+
+Stage outputs are written to:
+
+```text
+output/taste_profile.json
+output/taste_profile_llm.json
+data/collected_gigs.json
+output/gig_enrichment_output.json
+output/monthly_report.md
+```
+
 ## Run With Spotify
 
 Create an app in the Spotify Developer Dashboard and add this redirect URI:
@@ -312,7 +357,7 @@ python3 scripts/run_every_three_days.py --force
 For cron, run the wrapper every morning at 10am. The wrapper itself skips unless 3 days have passed since the last successful scheduled run:
 
 ```cron
-0 10 * * * cd /home/kryz-wosik/dev/agents/hello-agent/music-gig-agent && /usr/bin/python3 scripts/run_every_three_days.py >> output/cron.log 2>&1
+0 10 * * * cd /home/kryz/dev/learning_agents/music-gig-agent && /usr/bin/python3 scripts/run_every_three_days.py >> output/cron.log 2>&1
 ```
 
 The scheduler writes its own log to:

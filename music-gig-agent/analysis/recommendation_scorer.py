@@ -1,3 +1,5 @@
+import re
+from collections import Counter
 from typing import Any
 
 
@@ -84,19 +86,30 @@ def _music_fit(
         score += min(1.2, 0.45 + (top_genres.get(genre, 0) * 0.15))
 
     if overlapping_genres:
-        reasons.append("Music fit: overlaps with recent listening genres: " + ", ".join(overlapping_genres))
-    else:
-        warnings.append("Music fit: no direct Spotify genre overlap")
+        reasons.append(
+            "Music fit: overlaps with recent listening genres: "
+            + ", ".join(overlapping_genres)
+        )
 
-    llm_styles = _flatten_strings(
-        llm_taste_profile.get("dominant_styles", [])
-        + llm_taste_profile.get("likely_gig_preferences", [])
-        + llm_taste_profile.get("strong_opinions", [])
+    affinity_score, affinity_hits, negative_hits = _profile_affinity_fit(
+        gig, llm_taste_profile
     )
-    llm_hits = sorted({genre for genre in gig_genres if _contains_any(genre, llm_styles)})
-    if llm_hits:
-        score += min(1.5, 0.5 * len(llm_hits))
-        reasons.append("LLM taste fit: matches " + ", ".join(llm_hits))
+    if affinity_hits:
+        score += affinity_score
+        reasons.append(
+            "Music fit: matches current taste profile: "
+            + ", ".join(affinity_hits[:5])
+        )
+
+    if negative_hits:
+        score -= min(1.5, 0.45 * len(negative_hits))
+        warnings.append(
+            "Music fit: possible taste-profile misfires: "
+            + ", ".join(negative_hits[:4])
+        )
+
+    if not overlapping_genres and not affinity_hits:
+        warnings.append("Music fit: no direct Spotify or taste-profile style overlap")
 
     return _clamp(score, 0, 10)
 
@@ -244,6 +257,149 @@ def _bounded_adjustment(value: Any) -> float:
     return _clamp(float(value), -2.0, 2.0)
 
 
+
+AFFINITY_FIELD_WEIGHTS = {
+    "dominant_styles": 1.0,
+    "likely_gig_preferences": 1.0,
+    "strong_opinions": 0.8,
+    "listening_patterns": 0.6,
+    "evidence": 0.4,
+}
+NEGATIVE_AFFINITY_FIELD_WEIGHTS = {
+    "possible_misfires": 1.0,
+}
+AFFINITY_SYNONYMS = {
+    "singer-songwriter": ["singer songwriter", "songwriter", "songwriting", "writer", "acoustic"],
+    "singer songwriter": ["singer-songwriter", "songwriter", "songwriting", "writer", "acoustic"],
+    "songwriter": ["singer-songwriter", "singer songwriter", "songwriting", "writer"],
+    "songwriting": ["singer-songwriter", "singer songwriter", "songwriter", "writer"],
+    "americana": ["alt-country", "alt country", "roots", "folk"],
+    "alt-country": ["alt country", "americana", "roots", "folk"],
+    "alt country": ["alt-country", "americana", "roots", "folk"],
+    "folk": ["alt-folk", "indie folk", "acoustic", "roots", "singer-songwriter"],
+    "alt-folk": ["folk", "indie folk", "acoustic", "singer-songwriter"],
+    "indie folk": ["folk", "alt-folk", "acoustic", "singer-songwriter"],
+    "indie-rock": ["indie rock", "guitar", "guitar music", "band"],
+    "indie rock": ["indie-rock", "guitar", "guitar music", "band"],
+    "guitar": ["guitar music", "guitar-based", "band", "indie rock"],
+    "guitar-based": ["guitar", "guitar music", "band"],
+    "roots": ["americana", "folk", "alt-country"],
+    "listening-room": ["listening room", "singer-songwriter", "songwriter", "acoustic"],
+    "listening room": ["listening-room", "singer-songwriter", "songwriter", "acoustic"],
+}
+AFFINITY_STOP_TERMS = {
+    "music",
+    "artist",
+    "artists",
+    "gig",
+    "gigs",
+    "show",
+    "shows",
+    "live",
+    "current",
+    "recent",
+    "strong",
+    "good",
+    "great",
+    "likely",
+    "preference",
+    "preferences",
+}
+
+
+def _profile_affinity_fit(
+    gig: dict[str, Any], llm_taste_profile: dict[str, Any]
+) -> tuple[float, list[str], list[str]]:
+    positive_terms = _build_dynamic_affinity_terms(
+        llm_taste_profile, AFFINITY_FIELD_WEIGHTS, expand_synonyms=True
+    )
+    negative_terms = _build_dynamic_affinity_terms(
+        llm_taste_profile, NEGATIVE_AFFINITY_FIELD_WEIGHTS, expand_synonyms=False
+    )
+    if not positive_terms and not negative_terms:
+        return 0.0, [], []
+
+    gig_text = _gig_text(gig)
+    positive_hits = _weighted_term_hits(gig_text, positive_terms)
+    negative_hits = _weighted_term_hits(gig_text, negative_terms)
+    score = min(2.4, sum(weight for _term, weight in positive_hits[:6]) * 0.35)
+    return (
+        score,
+        _dedupe_affinity_labels([term for term, _weight in positive_hits]),
+        _dedupe_affinity_labels([term for term, _weight in negative_hits]),
+    )
+
+
+def _dedupe_affinity_labels(terms: list[str]) -> list[str]:
+    seen = set()
+    labels = []
+    for term in terms:
+        key = _normalize_term(term)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        labels.append(term)
+    return labels
+
+
+def _build_dynamic_affinity_terms(
+    llm_taste_profile: dict[str, Any],
+    field_weights: dict[str, float],
+    expand_synonyms: bool,
+) -> dict[str, float]:
+    terms: Counter[str] = Counter()
+    for field, weight in field_weights.items():
+        for value in llm_taste_profile.get(field, []):
+            for term in _extract_music_terms(str(value)):
+                terms[term] += weight
+                if expand_synonyms:
+                    for synonym in AFFINITY_SYNONYMS.get(term, []):
+                        terms[_normalize_term(synonym)] += weight * 0.75
+
+    return {term: float(weight) for term, weight in terms.items()}
+
+
+def _extract_music_terms(value: str) -> list[str]:
+    normalized = _normalize_term(value)
+    terms: set[str] = set()
+    for known_term in AFFINITY_SYNONYMS:
+        if _term_in_text(known_term, normalized):
+            terms.add(known_term)
+
+    for match in re.findall(r"[a-z0-9]+(?:[- ][a-z0-9]+){0,2}", normalized):
+        term = _normalize_term(match)
+        words = term.split()
+        if len(term) < 4 or term in AFFINITY_STOP_TERMS:
+            continue
+        if len(words) == 1 and words[0] in AFFINITY_STOP_TERMS:
+            continue
+        if len(words) == 1 and len(words[0]) < 5:
+            continue
+        terms.add(term)
+
+    return sorted(terms)
+
+
+def _weighted_term_hits(text: str, terms: dict[str, float]) -> list[tuple[str, float]]:
+    hits = [
+        (term, weight)
+        for term, weight in terms.items()
+        if _term_in_text(term, text)
+    ]
+    return sorted(hits, key=lambda item: (-item[1], item[0]))
+
+
+def _term_in_text(term: str, text: str) -> bool:
+    normalized_term = _normalize_term(term)
+    normalized_text = _normalize_term(text)
+    if not normalized_term:
+        return False
+    return re.search(rf"(?<![a-z0-9]){re.escape(normalized_term)}(?![a-z0-9])", normalized_text) is not None
+
+
+def _normalize_term(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value).lower()).strip()
+
 def _live_preference_terms(live_taste_profile: dict[str, Any], key: str) -> list[str]:
     listener_profile = live_taste_profile.get("listener_profile", {})
     live_preferences = listener_profile.get("live_preferences", {})
@@ -268,12 +424,17 @@ def _known_artists(live_taste_profile: dict[str, Any]) -> set[str]:
 
 
 def _gig_text(gig: dict[str, Any]) -> str:
+    analysis = gig.get("analysis", {}) if isinstance(gig.get("analysis"), dict) else {}
     pieces = [
         gig.get("artist", ""),
         gig.get("venue", ""),
         gig.get("listing_notes", ""),
+        analysis.get("style_summary", ""),
+        analysis.get("why_i_might_like_it", ""),
+        analysis.get("why_i_might_not", ""),
         " ".join(str(value) for value in gig.get("genres", [])),
         " ".join(str(value) for value in gig.get("moods", [])),
+        " ".join(str(value) for value in analysis.get("semantic_tags", [])),
     ]
     return " ".join(str(piece).lower() for piece in pieces if piece)
 
@@ -297,16 +458,8 @@ def _matching_venue(venue: str, venue_scores: dict[str, float]) -> str | None:
     return None
 
 
-def _contains_any(value: str, candidates: list[str]) -> bool:
-    return any(value in candidate or candidate in value for candidate in candidates)
-
-
 def _normalized_list(values: list[Any]) -> list[str]:
     return [str(value).lower().strip() for value in values if str(value).strip()]
-
-
-def _flatten_strings(values: list[Any]) -> list[str]:
-    return [str(value).lower() for value in values if str(value).strip()]
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:

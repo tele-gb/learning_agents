@@ -205,6 +205,8 @@ def _send_openai_request(payload: dict[str, Any], api_key: str) -> dict[str, Any
         raise OpenAIGigEnrichmentError(
             f"OpenAI gig enrichment failed: {error.code} {_redact_sensitive_details(details)}"
         ) from error
+    except OSError as error:
+        raise OpenAIGigEnrichmentError(f"OpenAI gig enrichment failed: {error}") from error
 
 
 def _extract_structured_output(response_payload: dict[str, Any]) -> dict[str, Any]:

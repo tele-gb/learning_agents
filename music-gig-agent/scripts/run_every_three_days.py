@@ -16,13 +16,11 @@ PIPELINE_COMMAND = [
     sys.executable,
     "-u",
     "main.py",
-    "--spotify",
-    "--save-spotify-snapshot",
-    "--llm-taste-profile",
-    "--collect-gigs",
-    "--llm-gig-enrichment",
+    "--full-live-pipeline",
     "--confirm-openai-cost",
     "--confirm-openai-search-cost",
+    "--gig-enrichment-batch-size",
+    "6",
     "--email-report",
 ]
 
